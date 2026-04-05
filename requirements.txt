@@ -1,0 +1,5 @@
+backtrader
+pandas
+matplotlib
+numpy
+ta-lib
