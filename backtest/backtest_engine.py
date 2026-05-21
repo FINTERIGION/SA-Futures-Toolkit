@@ -1,10 +1,10 @@
 """
-回测引擎模块
-负责：
-  - 自定义 Analyzer（权益曲线、每日收益、持仓记录）
-  - 交易日志收集与 CSV 导出
-  - 回测指标计算（夏普、最大回撤、胜率、盈亏比等）
-  - 运行 Cerebro 并返回结构化结果
+Backtest Engine Module
+Responsible for:
+  - Custom analyzers (equity curve, daily returns, position records)
+  - Trade log collection and CSV export
+  - Metrics calculation (Sharpe, max drawdown, win rate, profit/loss ratio, etc.)
+  - Running Cerebro and returning structured results
 """
 
 import os
@@ -18,12 +18,12 @@ import numpy as np
 
 
 # ==============================================================================
-# 自定义 Analyzer：逐日记录权益、收益率、持仓
+# Custom analyzers: per-bar equity, daily return, and position records
 # ==============================================================================
 
 class DailyEquityAnalyzer(bt.Analyzer):
     """
-    每个 bar 记录：日期、账户总权益、当日持仓、当日收益率
+    Records, for every bar: date, total account equity, current position, and daily return.
     """
 
     def start(self):
@@ -49,8 +49,8 @@ class DailyEquityAnalyzer(bt.Analyzer):
 
 class TradeLogAnalyzer(bt.Analyzer):
     """
-    收集每笔完整交易的开仓/平仓记录
-    记录字段：
+    Collects the open and close records of every completed trade.
+    Fields:
       trade_id, open_date, close_date, direction,
       open_price, close_price, size,
       gross_pnl, commission, net_pnl, margin_used
@@ -70,14 +70,14 @@ class TradeLogAnalyzer(bt.Analyzer):
             return
         tid = order.tradeid
         if tid not in self._trade_info:
-            # First order for this trade → records open direction & price
+            # First order for this trade -> record open direction and price
             self._trade_info[tid] = {
                 'direction':   'long' if order.isbuy() else 'short',
                 'open_price':  order.executed.price,
                 'close_price': order.executed.price,   # placeholder
             }
         else:
-            # Subsequent order (closing) → update close price
+            # Subsequent (closing) order -> update close price
             self._trade_info[tid]['close_price'] = order.executed.price
 
     def notify_trade(self, trade):
@@ -121,29 +121,29 @@ class TradeLogAnalyzer(bt.Analyzer):
 
 
 # ==============================================================================
-# 回测引擎主类
+# Backtest engine main class
 # ==============================================================================
 
 class BacktestEngine:
     """
-    封装 Cerebro 配置与运行，提供结构化结果输出。
+    Wraps Cerebro configuration and execution, and produces structured results.
 
     Parameters
     ----------
     strategy_class : type
-        策略类（继承自 FuturesStrategyBase）
+        Strategy class (subclass of FuturesStrategyBase).
     data_feed : bt.feeds.PandasData
-        已配置好的数据 Feed
+        A pre-configured data feed.
     config : dict
-        回测配置字典，键：
-          initial_cash       初始资金（默认 100000）
-          commission_rate    手续费率（默认 0.0002）
-          margin_rate        保证金比例（默认 0.10）
-          contract_multiplier 合约乘数（默认 20）
-          trade_size         交易手数（默认 1）
-          strategy_params    传入策略的额外参数 dict（可选）
-          results_dir        结果保存目录（默认 backtest/results）
-          strategy_name      策略名称（用于文件命名）
+        Backtest configuration. Keys:
+          initial_cash         initial cash (default 100000)
+          commission_rate      commission rate (default 0.0002)
+          margin_rate          margin ratio (default 0.10)
+          contract_multiplier  contract multiplier (default 20)
+          trade_size           lots per trade (default 1)
+          strategy_params      extra dict passed to the strategy (optional)
+          results_dir          output directory (default backtest/results)
+          strategy_name        strategy name (used in file naming)
     """
 
     DEFAULT_CONFIG = {
@@ -166,17 +166,17 @@ class BacktestEngine:
         os.makedirs(self.config['results_dir'], exist_ok=True)
 
     # ------------------------------------------------------------------
-    # 公开方法
+    # Public methods
     # ------------------------------------------------------------------
 
     def run(self) -> dict:
         """
-        运行回测，返回结果字典：
+        Run the backtest and return a dict containing:
           cerebro, results, equity_records, trade_logs,
           metrics, log_path
         """
         cerebro = self._build_cerebro()
-        print("[BacktestEngine] 开始回测...")
+        print("[BacktestEngine] Starting backtest ...")
         results = cerebro.run()
         strat = results[0]
 
@@ -198,17 +198,17 @@ class BacktestEngine:
         }
 
     # ------------------------------------------------------------------
-    # 内部方法：构建 Cerebro
+    # Internal methods: build Cerebro
     # ------------------------------------------------------------------
 
     def _build_cerebro(self) -> bt.Cerebro:
         cfg = self.config
         cerebro = bt.Cerebro()
 
-        # 数据
+        # Data
         cerebro.adddata(self.data_feed)
 
-        # 策略参数合并
+        # Merge strategy parameters
         strat_params = {
             'contract_multiplier': cfg['contract_multiplier'],
             'trade_size':          cfg['trade_size'],
@@ -220,7 +220,7 @@ class BacktestEngine:
         # Broker
         cerebro.broker.setcash(cfg['initial_cash'])
 
-        # 期货手续费（按成交额比例）
+        # Futures commission (percentage of notional)
         comm_info = bt.CommissionInfo(
             commission=cfg['commission_rate'],
             mult=cfg['contract_multiplier'],
@@ -245,7 +245,7 @@ class BacktestEngine:
         return cerebro
 
     # ------------------------------------------------------------------
-    # 内部方法：计算指标
+    # Internal methods: compute metrics
     # ------------------------------------------------------------------
 
     def _calc_metrics(self, equity_records: list, trade_logs: list) -> dict:
@@ -258,11 +258,11 @@ class BacktestEngine:
         final_equity    = equity_records[-1]['equity']
         total_return    = (final_equity - initial_cash) / initial_cash
 
-        # 日收益率序列
+        # Daily return series
         daily_returns = [r['daily_return'] for r in equity_records]
         dr_arr = np.array(daily_returns, dtype=float)
 
-        # 夏普比率（年化，无风险利率 3%）
+        # Sharpe ratio (annualized, risk-free rate 3%)
         risk_free_daily = 0.03 / 252
         excess = dr_arr - risk_free_daily
         sharpe = (
@@ -270,13 +270,13 @@ class BacktestEngine:
             if excess.std() > 1e-10 else 0.0
         )
 
-        # 最大回撤
+        # Max drawdown
         equities = np.array([r['equity'] for r in equity_records], dtype=float)
         running_max = np.maximum.accumulate(equities)
         drawdowns = (running_max - equities) / running_max
         max_drawdown = float(drawdowns.max()) if len(drawdowns) > 0 else 0.0
 
-        # 交易统计
+        # Trade statistics
         n_trades = len(trade_logs)
         if n_trades > 0:
             winning_trades = [t for t in trade_logs if t['net_pnl'] > 0]
@@ -310,7 +310,7 @@ class BacktestEngine:
         }
 
     # ------------------------------------------------------------------
-    # 内部方法：保存交易日志
+    # Internal methods: save trade log
     # ------------------------------------------------------------------
 
     def _save_trade_log(self, trade_logs: list) -> str:
@@ -330,29 +330,29 @@ class BacktestEngine:
             writer.writeheader()
             writer.writerows(trade_logs)
 
-        print(f"[BacktestEngine] 交易日志已保存：{filepath}")
+        print(f"[BacktestEngine] Trade log saved: {filepath}")
         return filepath
 
     # ------------------------------------------------------------------
-    # 内部方法：打印摘要
+    # Internal methods: print summary
     # ------------------------------------------------------------------
 
     @staticmethod
     def _print_summary(metrics: dict, log_path: str):
         sep = "=" * 50
         print(sep)
-        print("  回测结果摘要")
+        print("  Backtest Result Summary")
         print(sep)
-        print(f"  初始资金        : {metrics.get('initial_cash', 0):>12,.2f} 元")
-        print(f"  最终权益        : {metrics.get('final_equity', 0):>12,.2f} 元")
-        print(f"  总收益率        : {metrics.get('total_return', 0):>11.4f} %")
-        print(f"  夏普比率        : {metrics.get('sharpe_ratio', 0):>12.4f}")
-        print(f"  最大回撤        : {metrics.get('max_drawdown', 0):>11.4f} %")
-        print(f"  胜率            : {metrics.get('win_rate', 0):>11.4f} %")
-        print(f"  盈亏比          : {metrics.get('profit_loss_ratio', 0):>12.4f}")
-        print(f"  总交易次数      : {metrics.get('n_trades', 0):>12}")
-        print(f"  盈利次数        : {metrics.get('n_winning', 0):>12}")
-        print(f"  亏损次数        : {metrics.get('n_losing', 0):>12}")
+        print(f"  Initial Cash      : {metrics.get('initial_cash', 0):>12,.2f} CNY")
+        print(f"  Final Equity      : {metrics.get('final_equity', 0):>12,.2f} CNY")
+        print(f"  Total Return      : {metrics.get('total_return', 0):>11.4f} %")
+        print(f"  Sharpe Ratio      : {metrics.get('sharpe_ratio', 0):>12.4f}")
+        print(f"  Max Drawdown      : {metrics.get('max_drawdown', 0):>11.4f} %")
+        print(f"  Win Rate          : {metrics.get('win_rate', 0):>11.4f} %")
+        print(f"  Profit/Loss Ratio : {metrics.get('profit_loss_ratio', 0):>12.4f}")
+        print(f"  Total Trades      : {metrics.get('n_trades', 0):>12}")
+        print(f"  Winning Trades    : {metrics.get('n_winning', 0):>12}")
+        print(f"  Losing Trades     : {metrics.get('n_losing', 0):>12}")
         print(sep)
-        print(f"  交易日志        : {log_path}")
+        print(f"  Trade Log         : {log_path}")
         print(sep)

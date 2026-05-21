@@ -1,10 +1,10 @@
 """
-图表绘制模块
-使用 matplotlib 绘制以下图表并保存：
-  1. 资金曲线图  - 账户权益随时间变化
-  2. 收益曲线图  - 累计收益率与每日收益率
-  3. 持仓状态图  - 多空持仓数量变化
-  4. 价格与信号图 - 收盘价走势及买卖信号标记
+Plotting Module
+Uses matplotlib to draw and save the following charts:
+  1. Equity curve     - account equity over time
+  2. Return curve     - cumulative and daily returns
+  3. Position chart   - long/short position size over time
+  4. Price & signals  - close price with buy/sell signal markers
 """
 
 import os
@@ -12,13 +12,13 @@ import datetime
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')   # 无显示器环境下使用非交互后端
+matplotlib.use('Agg')   # Use a non-interactive backend (works without a display)
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
 
-# 全局绘图样式
+# Global plotting style
 plt.rcParams.update({
     'font.sans-serif': ['DejaVu Sans', 'SimHei', 'Arial Unicode MS'],
     'axes.unicode_minus': False,
@@ -34,31 +34,32 @@ plt.rcParams.update({
     'legend.edgecolor': '#30363d',
 })
 
-COLOR_UP    = '#3fb950'   # 绿色（盈利 / 多仓）
-COLOR_DOWN  = '#f85149'   # 红色（亏损 / 空仓）
-COLOR_FLAT  = '#8b949e'   # 灰色（空仓）
-COLOR_PRICE = '#58a6ff'   # 蓝色（价格线）
-COLOR_EQ    = '#d2a8ff'   # 紫色（权益线）
+COLOR_UP    = '#3fb950'   # green (profit / long)
+COLOR_DOWN  = '#f85149'   # red   (loss / short)
+COLOR_FLAT  = '#8b949e'   # gray  (flat)
+COLOR_PRICE = '#58a6ff'   # blue  (price line)
+COLOR_EQ    = '#d2a8ff'   # purple (equity line)
 
 
 class BacktestPlotter:
     """
-    回测图表生成器
+    Backtest chart generator.
 
     Parameters
     ----------
     equity_records : list of dict
-        DailyEquityAnalyzer 的输出，字段：date, equity, position, daily_return
+        Output of DailyEquityAnalyzer. Fields: date, equity, position, daily_return.
     trade_logs : list of dict
-        TradeLogAnalyzer 的输出，字段：open_date, close_date, direction, ...
+        Output of TradeLogAnalyzer. Fields: open_date, close_date, direction, ...
     price_df : pd.DataFrame
-        原始价格 DataFrame（index=date，含 close 列），用于价格+信号图
+        Raw price DataFrame (index=date, contains a `close` column);
+        used for the price + signals chart.
     signal_log : list of dict
-        策略的 signal_log，字段：date, price, direction（'buy'|'sell'|'close'）
+        Strategy's signal_log. Fields: date, price, direction ('buy' | 'sell' | 'close').
     metrics : dict
-        回测指标字典
+        Dictionary of backtest metrics.
     config : dict
-        回测配置（含 results_dir, strategy_name 等）
+        Backtest configuration (contains results_dir, strategy_name, etc.).
     """
 
     def __init__(
@@ -83,7 +84,7 @@ class BacktestPlotter:
 
         os.makedirs(self._results_dir, exist_ok=True)
 
-        # 构建 DataFrame
+        # Build DataFrame
         self._equity_df  = pd.DataFrame(equity_records)
         if not self._equity_df.empty:
             self._equity_df['date'] = pd.to_datetime(self._equity_df['date'])
@@ -93,18 +94,18 @@ class BacktestPlotter:
             ) * 100
 
     # ------------------------------------------------------------------
-    # 公开方法
+    # Public methods
     # ------------------------------------------------------------------
 
     def plot_all(self) -> dict:
         """
-        绘制全部图表，返回各图路径字典
+        Draw all charts and return a dict of file paths:
         {
           'equity':   str,
           'returns':  str,
           'position': str,
           'signals':  str,
-          'summary':  str,   # 四图合一总览
+          'summary':  str,   # four-in-one summary
         }
         """
         paths = {}
@@ -116,7 +117,7 @@ class BacktestPlotter:
         return paths
 
     # ------------------------------------------------------------------
-    # 图 1：资金曲线
+    # Chart 1: equity curve
     # ------------------------------------------------------------------
 
     def _plot_equity_curve(self) -> str:
@@ -125,7 +126,7 @@ class BacktestPlotter:
 
         ax.plot(df.index, df['equity'], color=COLOR_EQ, linewidth=1.5, label='Equity')
 
-        # 填充回撤区域
+        # Fill the drawdown area
         running_max = df['equity'].cummax()
         ax.fill_between(df.index, df['equity'], running_max,
                         where=(df['equity'] < running_max),
@@ -140,7 +141,7 @@ class BacktestPlotter:
         fig.autofmt_xdate()
         ax.grid(True, alpha=0.3)
 
-        # 标注最终指标
+        # Annotate final metrics
         m = self.metrics
         info = (
             f"Total Return: {m.get('total_return', 0):.2f}%  "
@@ -156,18 +157,18 @@ class BacktestPlotter:
         fig.tight_layout()
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[Plotter] 资金曲线图已保存：{path}")
+        print(f"[Plotter] Equity curve saved: {path}")
         return path
 
     # ------------------------------------------------------------------
-    # 图 2：收益曲线
+    # Chart 2: return curve
     # ------------------------------------------------------------------
 
     def _plot_return_curve(self) -> str:
         fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
         df = self._equity_df
 
-        # 上：累计收益率
+        # Top: cumulative return
         ax1 = axes[0]
         ax1.plot(df.index, df['cum_return'], color=COLOR_EQ, linewidth=1.5)
         ax1.fill_between(df.index, df['cum_return'], 0,
@@ -179,7 +180,7 @@ class BacktestPlotter:
         ax1.set_ylabel('Cumulative Return (%)')
         ax1.grid(True, alpha=0.3)
 
-        # 下：每日收益率（柱状图）
+        # Bottom: daily return (bar chart)
         ax2 = axes[1]
         colors = [COLOR_UP if v >= 0 else COLOR_DOWN for v in df['daily_return'] * 100]
         ax2.bar(df.index, df['daily_return'] * 100, color=colors, alpha=0.7, width=1)
@@ -199,11 +200,11 @@ class BacktestPlotter:
         fig.tight_layout()
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[Plotter] 收益曲线图已保存：{path}")
+        print(f"[Plotter] Return curve saved: {path}")
         return path
 
     # ------------------------------------------------------------------
-    # 图 3：持仓状态
+    # Chart 3: position state
     # ------------------------------------------------------------------
 
     def _plot_position(self) -> str:
@@ -238,11 +239,11 @@ class BacktestPlotter:
         fig.tight_layout()
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[Plotter] 持仓状态图已保存：{path}")
+        print(f"[Plotter] Position chart saved: {path}")
         return path
 
     # ------------------------------------------------------------------
-    # 图 4：价格 + 信号
+    # Chart 4: price + signals
     # ------------------------------------------------------------------
 
     def _plot_price_signals(self) -> str:
@@ -257,7 +258,7 @@ class BacktestPlotter:
             ax.plot(price_df.index, price_df['close'],
                     color=COLOR_PRICE, linewidth=1.2, label='Close', zorder=2)
 
-            # 信号标记
+            # Signal markers
             for sig in self.signal_log:
                 sig_date = pd.to_datetime(sig['date'])
                 sig_price = sig['price']
@@ -270,7 +271,7 @@ class BacktestPlotter:
                     ax.scatter(sig_date, sig_price, marker='v', color=COLOR_DOWN,
                                s=80, zorder=5, label='_nolegend_')
 
-            # 图例代理
+            # Legend proxies
             from matplotlib.lines import Line2D
             legend_elements = [
                 Line2D([0], [0], color=COLOR_PRICE, linewidth=1.5, label='Close'),
@@ -294,11 +295,11 @@ class BacktestPlotter:
         fig.tight_layout()
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[Plotter] 价格信号图已保存：{path}")
+        print(f"[Plotter] Price & signals chart saved: {path}")
         return path
 
     # ------------------------------------------------------------------
-    # 图 5：四图合一总览
+    # Chart 5: four-in-one summary
     # ------------------------------------------------------------------
 
     def _plot_summary(self) -> str:
@@ -318,7 +319,7 @@ class BacktestPlotter:
 
         df = self._equity_df
 
-        # 1. 资金曲线
+        # 1. Equity curve
         ax1 = fig.add_subplot(gs[0, :])
         ax1.plot(df.index, df['equity'], color=COLOR_EQ, linewidth=1.5, label='Equity')
         running_max = df['equity'].cummax()
@@ -333,7 +334,7 @@ class BacktestPlotter:
         ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
         plt.setp(ax1.get_xticklabels(), rotation=30, ha='right')
 
-        # 2. 累计收益率
+        # 2. Cumulative return
         ax2 = fig.add_subplot(gs[1, 0])
         ax2.plot(df.index, df['cum_return'], color=COLOR_EQ, linewidth=1.2)
         ax2.fill_between(df.index, df['cum_return'], 0,
@@ -348,7 +349,7 @@ class BacktestPlotter:
         ax2.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
         plt.setp(ax2.get_xticklabels(), rotation=30, ha='right')
 
-        # 3. 每日收益率
+        # 3. Daily return
         ax3 = fig.add_subplot(gs[1, 1])
         colors = [COLOR_UP if v >= 0 else COLOR_DOWN for v in df['daily_return'] * 100]
         ax3.bar(df.index, df['daily_return'] * 100, color=colors, alpha=0.7, width=1)
@@ -360,7 +361,7 @@ class BacktestPlotter:
         ax3.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
         plt.setp(ax3.get_xticklabels(), rotation=30, ha='right')
 
-        # 4. 持仓状态
+        # 4. Position state
         ax4 = fig.add_subplot(gs[2, 0])
         pos = df['position']
         ax4.fill_between(df.index, pos, 0, where=(pos > 0), alpha=0.5, color=COLOR_UP, label='Long')
@@ -375,7 +376,7 @@ class BacktestPlotter:
         ax4.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
         plt.setp(ax4.get_xticklabels(), rotation=30, ha='right')
 
-        # 5. 价格 + 信号
+        # 5. Price + signals
         ax5 = fig.add_subplot(gs[2, 1])
         price_df = self.price_df
         if 'close' in price_df.columns:
@@ -403,5 +404,5 @@ class BacktestPlotter:
         )
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[Plotter] 总览图已保存：{path}")
+        print(f"[Plotter] Summary chart saved: {path}")
         return path

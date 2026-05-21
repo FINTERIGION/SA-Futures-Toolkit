@@ -42,7 +42,7 @@ class DataUpdate:
             for year in range(self.start_year, self.year + 1):
                 path = f"cache/{self.category}{year}.txt"
                 if not os.path.exists(path):
-                    print(f"Warning: {path} does not exist, skipping...")
+                    print(f"Warning: {path} does not exist, skipping ...")
                     continue
                 df = pd.read_csv(path, sep='|', skiprows=2, header=None)
                 columns = ['date', 'contract', 'prev_settle', 'open', 'high', 'low', 'close', 'settle', 'change1', 'change2', 'volume', 'oi', 'oi_change', 'turnover', 'delivery_settle']
